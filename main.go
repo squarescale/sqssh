@@ -114,8 +114,6 @@ func modifyArgs(args []string, c Config) []string {
 	h := findHost(os.Getenv("SQSSH_HOST"), c)
 	h.hostnameFromAws()
 
-	uarg := h.userHost()
-
 	jarg := ""
 	if h.Jump != "" {
 		jh := findHost(h.Jump, c)
@@ -126,9 +124,9 @@ func modifyArgs(args []string, c Config) []string {
 	var wrappedArgs []string
 	for i, arg := range args {
 		if i == 1 && jarg != "" {
+			wrappedArgs = append(wrappedArgs, "-o", "Hostname "+h.Hostname)
 			wrappedArgs = append(wrappedArgs, "-J", jarg)
 		}
-		arg := strings.Replace(arg, "user@host", uarg, 1)
 		wrappedArgs = append(wrappedArgs, arg)
 	}
 	return wrappedArgs
