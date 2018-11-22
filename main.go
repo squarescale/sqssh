@@ -5,6 +5,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/docopt/docopt-go"
 	"github.com/spf13/viper"
 	"log"
 	"os"
@@ -101,20 +102,59 @@ func findHost(h string, c Config) Host {
 }
 
 func main() {
+	ssh_usage := `
+	usage: ssh [-46AaCfGgKkMNnqsTtVvXxYy] [-B <bind_interface>]
+   [-b <bind_address>] [-c <cipher_spec>] [-D <dynamic>]
+   [-E <log_file>] [-e <escape_char>] [-F <configfile>] [-I <pkcs11>]
+   [-i <identity_file>] [-J <jumpspec>] [-L <address>]
+   [-l <login_name>] [-m <mac_spec>] [-O <ctl_cmd>] [-o <option>] [-p <port>]
+   [-Q <query_option>] [-R <address>] [-S <ctl_path>] [-W <host:port>]
+   [-w <tunspec>] DESTINATION [COMMAND]
+options:
+    -B <bind_interface>
+    -b <bind_address>
+    -c <cipher_spec>
+    -D <dynamic>
+    -E <log_file>
+    -e <espace_char>
+    -F <configfile>
+    -I <pkcs11>
+    -i <identity_file>
+    -J <jumpspec>
+    -L <address>
+    -l <login_name>
+    -m <mac_spec>
+    -O <ctl_cmd>
+    -o <option>
+    -p <port>
+    -Q <query_option>
+    -R <address>
+    -S <ctl_path>
+    -W <host_port>
+    -w <tunspec>
+`
+
+	parser := &docopt.Parser{HelpHandler: func(error, string) {}}
+	opts, _ := parser.ParseArgs(ssh_usage, os.Args[1:], "")
+
 	c, err := config()
 	if err != nil {
 		panic(fmt.Errorf("Fatal error config file: %s \n", err))
 	}
 
-	args := modifyArgs(os.Args, c)
+	args := modifyArgs(os.Args, c, opts)
 	syscall.Exec("/usr/bin/ssh", args, os.Environ())
 }
 
-func modifyArgs(args []string, c Config) []string {
-	h := findHost(os.Getenv("SQSSH_HOST"), c)
+func modifyArgs(args []string, c Config, opts docopt.Opts) []string {
+	hostname := ""
+	if strings.Contains(opts["DESTINATION"].(string), "@") {
+		hostname = strings.Split(opts["DESTINATION"].(string), "@")[1]
+	} else {
+		hostname = opts["DESTINATION"].(string)
+	}
+	h := findHost(hostname, c)
 	h.hostnameFromAws()
-
-	uarg := h.userHost()
 
 	jarg := ""
 	if h.Jump != "" {
@@ -126,9 +166,9 @@ func modifyArgs(args []string, c Config) []string {
 	var wrappedArgs []string
 	for i, arg := range args {
 		if i == 1 && jarg != "" {
+			wrappedArgs = append(wrappedArgs, "-o", "Hostname "+h.Hostname)
 			wrappedArgs = append(wrappedArgs, "-J", jarg)
 		}
-		arg := strings.Replace(arg, "user@host", uarg, 1)
 		wrappedArgs = append(wrappedArgs, arg)
 	}
 	return wrappedArgs

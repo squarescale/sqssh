@@ -30,15 +30,17 @@ hosts:
       - Name: instance-state-name
         Values: running
 
-$ SQSSH_HOST=bastion sqssh user@host
+$ sqssh user@bastion
 core@ip-10-0-253-97 ~ $ exit
 
 $ # through a jumphost defined in configuration
-$ SQSSH_HOST=worker sqssh user@host
+$ sqssh user@worker
 core@ip-10-0-26-169 ~ $ exit
 
 $ # use any options like you would usually do
-$ SQSSH_HOST="worker" sqssh -Nf -L8500:localhost:8500 user@host
+$ sqssh -Nf -L8500:localhost:8500 user@worker
 $ curl -i localhost:8500 |head -n1
 HTTP/1.1 200 OK
 ```
+
+The tool leaves the `user@host` as-is in the command line, and will prepend `-o Hostname ec2-whatever` to ssh args'. This means that ssh will read config for the host you specify on the command-line. This allows to configure any named host that can change in your cluster.
