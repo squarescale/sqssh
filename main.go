@@ -77,8 +77,7 @@ type Config struct {
 func config() (Config, error) {
 	viper.SetConfigName("sqssh")
 	viper.SetConfigType("yaml")
-	viper.AddConfigPath("$HOME")
-	viper.AddConfigPath(".")
+	viper.AddConfigPath("$HOME/.config")
 	err := viper.ReadInConfig()
 	if err != nil {
 		panic(fmt.Errorf("Fatal error config file: %s \n", err))
