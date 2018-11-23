@@ -103,10 +103,10 @@ func findHost(h string, c Config) Host {
 
 func main() {
 	ssh_usage := `
-	usage: ssh [-46AaCfGgKkMNnqsTtVvXxYy] [-B <bind_interface>]
+	usage: ssh [-46AaCfGgKkNnqsTVXxYy] [-v...] [-M...] [-t...] [-B <bind_interface>]
    [-b <bind_address>] [-c <cipher_spec>] [-D <dynamic>]
    [-E <log_file>] [-e <escape_char>] [-F <configfile>] [-I <pkcs11>]
-   [-i <identity_file>] [-J <jumpspec>] [-L <address>]
+   [-i <identity_file>...] [-J <jumpspec>] [-L <address>]
    [-l <login_name>] [-m <mac_spec>] [-O <ctl_cmd>] [-o <option>] [-p <port>]
    [-Q <query_option>] [-R <address>] [-S <ctl_path>] [-W <host:port>]
    [-w <tunspec>] DESTINATION [COMMAND]
@@ -119,7 +119,7 @@ options:
     -e <espace_char>
     -F <configfile>
     -I <pkcs11>
-    -i <identity_file>
+    -i <identity_file>...
     -J <jumpspec>
     -L <address>
     -l <login_name>
