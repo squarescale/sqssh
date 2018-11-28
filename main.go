@@ -164,9 +164,11 @@ func modifyArgs(args []string, c Config, opts docopt.Opts) []string {
 
 	var wrappedArgs []string
 	for i, arg := range args {
-		if i == 1 && jarg != "" {
+		if i == 1 {
 			wrappedArgs = append(wrappedArgs, "-o", "Hostname "+h.Hostname)
-			wrappedArgs = append(wrappedArgs, "-J", jarg)
+			if h.Jump != "" {
+				wrappedArgs = append(wrappedArgs, "-J", jarg)
+			}
 		}
 		wrappedArgs = append(wrappedArgs, arg)
 	}
