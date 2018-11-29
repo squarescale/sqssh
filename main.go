@@ -25,10 +25,14 @@ type Host struct {
 	Filters  []Filter
 	Public   bool
 	Jump     string
+	Query    string
 }
 
 func (h *Host) hostnameFromAws() {
-	ec2svc := ec2.New(session.New())
+	sess, _ := session.NewSessionWithOptions(session.Options{
+		SharedConfigState: session.SharedConfigEnable,
+	})
+	ec2svc := ec2.New(sess)
 	//ec2svc := ec2.New(session.New(), aws.NewConfig().WithLogLevel(aws.LogDebugWithHTTPBody))
 
 	filters := []*ec2.Filter{}
