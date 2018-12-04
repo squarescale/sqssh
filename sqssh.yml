@@ -1,0 +1,18 @@
+---
+hosts:
+  - name: worker
+    user: core
+    jump: bastion
+    filters:
+      - Name: tag:Name
+        Values: Worker
+      - Name: instance-state-name
+        Values: running
+  - name: bastion
+    user: core
+    public: true
+    filters:
+      - Name: tag:Name
+        Values: Bastion
+      - Name: instance-state-name
+        Values: running
