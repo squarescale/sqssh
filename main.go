@@ -178,12 +178,14 @@ func main() {
 	viper.AddConfigPath("$HOME/.config")
 	viper.AutomaticEnv()
 	err := viper.ReadInConfig()
-	if err != nil {
-		panic(fmt.Errorf("Fatal error config file: %s \n", err))
-	}
 
 	if viper.GetBool("debug") {
 		log.SetLevel(log.DebugLevel)
+	}
+
+	// once logger is configured, we can handle viper err
+	if err != nil {
+		log.Debug(err)
 	}
 
 	sc, err := NewSshComand(os.Args)
