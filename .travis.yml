@@ -3,7 +3,8 @@ go:
   - 1.11
 
 deploy:
-- provider: script
+  github-token: $GITHUB_TOKEN
+  provider: script
   skip_cleanup: true
   script: curl -sL https://git.io/goreleaser | GO111MODULE=on bash
   on:
