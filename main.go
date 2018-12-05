@@ -138,7 +138,10 @@ func (s *SshCommand) hostArg() string {
 	h := s.hostnameFromCommand(s.Opts["DESTINATION"].(string))
 	h = s.hostnameFromConfig(h)
 	h = s.hostnameFromAws(h)
-	return "-o Hostname " + h
+	if h != "" {
+		return "-o Hostname " + h
+	}
+	return ""
 }
 
 func (s *SshCommand) jumpArg() string {
@@ -158,7 +161,11 @@ func (s *SshCommand) jumpArg() string {
 
 func (s *SshCommand) cmd() []string {
 	cmd := []string{"/usr/bin/ssh"}
-	cmd = append(cmd, s.hostArg())
+
+	h := s.hostArg()
+	if h != "" {
+		cmd = append(cmd, h)
+	}
 
 	j := s.jumpArg()
 	if j != "" {
