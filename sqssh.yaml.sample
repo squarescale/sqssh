@@ -1,0 +1,6 @@
+---
+hosts:
+  Worker:
+    jump: Bastion
+  Bastion:
+    user: core
