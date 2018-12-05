@@ -73,9 +73,19 @@ func (s *SshCommand) hostnameFromCommand(destination string) string {
 }
 
 func (s *SshCommand) hostnameFromAws(hostname string) string {
-	sess, _ := session.NewSessionWithOptions(session.Options{
+	sess, err := session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
 	})
+
+	if err != nil {
+		log.Debug(err)
+	}
+
+	_, err = sess.Config.Credentials.Get()
+	if err != nil {
+		log.Debug("no AWS credential provided, see: https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/setup-credentials.html")
+		return ""
+	}
 
 	ec2svc := ec2.New(sess)
 	//ec2svc := ec2.New(sess, aws.NewConfig().WithLogLevel(aws.LogDebugWithHTTPBody))
@@ -183,6 +193,7 @@ func (s *SshCommand) run(args []string) {
 func main() {
 	viper.SetConfigName("sqssh")
 	viper.AddConfigPath("$HOME/.config")
+	viper.SetEnvPrefix("SQSSH")
 	viper.AutomaticEnv()
 	err := viper.ReadInConfig()
 
