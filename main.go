@@ -57,7 +57,7 @@ func NewSshComand(args []string) (*SshCommand, error) {
 
 	parser := &docopt.Parser{
 		HelpHandler:   docopt.NoHelpHandler,
-		SkipHelpFlags: false,
+		SkipHelpFlags: true,
 	}
 
 	opts, err := parser.ParseArgs(ssh_usage, sc.Args[1:], "")
