@@ -32,3 +32,8 @@ release:
   github:
     owner: squarescale
     name: sqssh
+
+brew:
+  github:
+    owner: squarescale
+    name: homebrew-sqssh
