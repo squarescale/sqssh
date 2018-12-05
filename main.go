@@ -162,7 +162,7 @@ func (s *SshCommand) cmd() []string {
 
 	j := s.jumpArg()
 	if j != "" {
-		cmd = append(cmd, s.jumpArg())
+		cmd = append(cmd, j)
 	}
 	cmd = append(cmd, s.Args[1:]...)
 	return cmd
