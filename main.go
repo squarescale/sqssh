@@ -3,116 +3,25 @@ package main
 import (
 	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awsutil"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/docopt/docopt-go"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
-	"log"
 	"os"
 	"strings"
 	"syscall"
 )
 
-type Filter struct {
-	Name   string
-	Values string
-}
-
-type Host struct {
-	Name     string
-	Hostname string
-	User     string
-	Filters  []Filter
-	Public   bool
-	Jump     string
-	Query    string
-}
-
-func (h *Host) hostnameFromAws() {
-	sess, _ := session.NewSessionWithOptions(session.Options{
-		SharedConfigState: session.SharedConfigEnable,
-	})
-	ec2svc := ec2.New(sess)
-	//ec2svc := ec2.New(session.New(), aws.NewConfig().WithLogLevel(aws.LogDebugWithHTTPBody))
-
-	filters := []*ec2.Filter{}
-	for _, filter := range h.Filters {
-		f := ec2.Filter{
-			Name:   aws.String(filter.Name),
-			Values: []*string{aws.String(filter.Values)},
-		}
-		filters = append(filters, &f)
-	}
-
-	params := &ec2.DescribeInstancesInput{
-		Filters: filters,
-	}
-
-	resp, err := ec2svc.DescribeInstances(params)
-	if err != nil {
-		fmt.Println("there was an error listing instances in", err.Error())
-		log.Fatal(err.Error())
-	}
-
-	for idx, _ := range resp.Reservations {
-		for _, inst := range resp.Reservations[idx].Instances {
-			if h.Public {
-				h.Hostname = *inst.PublicDnsName
-			} else {
-				h.Hostname = *inst.PrivateDnsName
-			}
-			break
-		}
-	}
-}
-
-func (h *Host) userHost() string {
-	uarg := ""
-	if h.User != "" {
-		uarg = h.User + "@"
-	}
-	return uarg + h.Hostname
-}
-
-type Config struct {
-	Hosts []Host
-}
-
-func config() (Config, error) {
-	viper.SetConfigName("sqssh")
-	viper.SetConfigType("yaml")
-	viper.AddConfigPath("$HOME/.config")
-	err := viper.ReadInConfig()
-	if err != nil {
-		panic(fmt.Errorf("Fatal error config file: %s \n", err))
-	}
-
-	var C Config
-	err = viper.Unmarshal(&C)
-	if err != nil {
-		fmt.Printf("unable to decode into struct, %v", err)
-	}
-	return C, err
-}
-
-func findHost(h string, c Config) Host {
-	for _, host := range c.Hosts {
-		if h == host.Name {
-			return host
-		}
-	}
-	return Host{}
-}
-
-func main() {
-	ssh_usage := `
+const ssh_usage = `
 	usage: ssh [-46AaCfGgKkNnqsTVXxYy] [-v...] [-M...] [-t...] [-B <bind_interface>]
    [-b <bind_address>] [-c <cipher_spec>] [-D <dynamic>]
    [-E <log_file>] [-e <escape_char>] [-F <configfile>] [-I <pkcs11>]
    [-i <identity_file>...] [-J <jumpspec>] [-L <address>...]
    [-l <login_name>] [-m <mac_spec>] [-O <ctl_cmd>] [-o <option>] [-p <port>]
    [-Q <query_option>] [-R <address>...] [-S <ctl_path>] [-W <host:port>]
-   [-w <tunspec>] DESTINATION [COMMAND]
+   [-w <tunspec>] DESTINATION [COMMAND...]
 options:
     -B <bind_interface>
     -b <bind_address>
@@ -137,44 +46,151 @@ options:
     -w <tunspec>
 `
 
-	parser := &docopt.Parser{HelpHandler: func(error, string) {}}
-	opts, _ := parser.ParseArgs(ssh_usage, os.Args[1:], "")
+type SshCommand struct {
+	Args []string
+	Opts docopt.Opts
+}
 
-	c, err := config()
+func NewSshComand(args []string) (*SshCommand, error) {
+	sc := new(SshCommand)
+	sc.Args = args
+
+	parser := &docopt.Parser{
+		HelpHandler:   docopt.NoHelpHandler,
+		SkipHelpFlags: false,
+	}
+
+	opts, err := parser.ParseArgs(ssh_usage, sc.Args[1:], "")
+	sc.Opts = opts
+	return sc, err
+}
+
+func (s *SshCommand) hostnameFromCommand(destination string) string {
+	if strings.Contains(destination, "@") {
+		destination = strings.Split(destination, "@")[1]
+	}
+	return destination
+}
+
+func (s *SshCommand) hostnameFromAws(hostname string) string {
+	sess, _ := session.NewSessionWithOptions(session.Options{
+		SharedConfigState: session.SharedConfigEnable,
+	})
+
+	ec2svc := ec2.New(sess)
+	//ec2svc := ec2.New(sess, aws.NewConfig().WithLogLevel(aws.LogDebugWithHTTPBody))
+	filters := []*ec2.Filter{
+		// builtin filter, the purpose is connecting to hosts, they need to be running
+		&ec2.Filter{
+			Name:   aws.String("instance-state-name"),
+			Values: []*string{aws.String("running")},
+		},
+	}
+
+	f := &ec2.Filter{
+		Name:   aws.String("tag:Name"),
+		Values: []*string{aws.String(hostname)},
+	}
+	filters = append(filters, f)
+
+	params := &ec2.DescribeInstancesInput{
+		Filters: filters,
+	}
+
+	log.Debugf("params: %#v", params)
+
+	resp, err := ec2svc.DescribeInstances(params)
+	if err != nil {
+		fmt.Println("there was an error listing instances in", err.Error())
+		log.Fatal(err.Error())
+	}
+
+	log.Debugf("%#v", resp)
+
+	hosts, _ := awsutil.ValuesAtPath(resp, "Reservations[].Instances[].PrivateDnsName")
+	for _, i := range hosts {
+		log.Debugf("%#v", *i.(*string))
+	}
+	log.Debugf("%v", hosts)
+
+	for idx, _ := range resp.Reservations {
+		for _, inst := range resp.Reservations[idx].Instances {
+			hostname = *inst.PublicDnsName
+			if hostname == "" {
+				hostname = *inst.PrivateDnsName
+			}
+			log.Debugf("dns: %#v", hostname)
+			return hostname
+		}
+	}
+	return ""
+}
+
+func (s *SshCommand) hostnameFromConfig(host string) string {
+	n := viper.GetString("hosts." + host + ".name")
+	if n == "" {
+		n = host
+	}
+	return host
+}
+
+func (s *SshCommand) hostArg() string {
+	h := s.hostnameFromCommand(s.Opts["DESTINATION"].(string))
+	h = s.hostnameFromConfig(h)
+	h = s.hostnameFromAws(h)
+	return "-o Hostname " + h
+}
+
+func (s *SshCommand) jumpArg() string {
+	h := s.hostnameFromCommand(s.Opts["DESTINATION"].(string))
+	j := viper.GetString("hosts." + h + ".jump")
+	if j != "" {
+		j := s.hostnameFromConfig(j)
+		u := viper.GetString("hosts." + j + ".user")
+		j = s.hostnameFromAws(j)
+		if u != "" {
+			u = u + "@"
+		}
+		return "-J " + u + j
+	}
+	return ""
+}
+
+func (s *SshCommand) cmd() []string {
+	cmd := []string{"/usr/bin/ssh"}
+	cmd = append(cmd, s.hostArg())
+
+	j := s.jumpArg()
+	if j != "" {
+		cmd = append(cmd, s.jumpArg())
+	}
+	cmd = append(cmd, s.Args[1:]...)
+	return cmd
+}
+
+func (s *SshCommand) run(args []string) {
+	log.Debugf("Executing ssh with: %s", args)
+	syscall.Exec("/usr/bin/ssh", args, os.Environ())
+}
+
+func main() {
+	viper.SetConfigName("sqssh")
+	viper.AddConfigPath("$HOME/.config")
+	viper.AutomaticEnv()
+	err := viper.ReadInConfig()
 	if err != nil {
 		panic(fmt.Errorf("Fatal error config file: %s \n", err))
 	}
 
-	args := modifyArgs(os.Args, c, opts)
-	syscall.Exec("/usr/bin/ssh", args, os.Environ())
-}
-
-func modifyArgs(args []string, c Config, opts docopt.Opts) []string {
-	hostname := ""
-	if strings.Contains(opts["DESTINATION"].(string), "@") {
-		hostname = strings.Split(opts["DESTINATION"].(string), "@")[1]
-	} else {
-		hostname = opts["DESTINATION"].(string)
-	}
-	h := findHost(hostname, c)
-	h.hostnameFromAws()
-
-	jarg := ""
-	if h.Jump != "" {
-		jh := findHost(h.Jump, c)
-		jh.hostnameFromAws()
-		jarg = jh.userHost()
+	if viper.GetBool("debug") {
+		log.SetLevel(log.DebugLevel)
 	}
 
-	var wrappedArgs []string
-	for i, arg := range args {
-		if i == 1 {
-			wrappedArgs = append(wrappedArgs, "-o", "Hostname "+h.Hostname)
-			if h.Jump != "" {
-				wrappedArgs = append(wrappedArgs, "-J", jarg)
-			}
-		}
-		wrappedArgs = append(wrappedArgs, arg)
+	sc, err := NewSshComand(os.Args)
+	if err != nil {
+		log.Debug("couldn't parse ssh command, executing as-is")
+		sc.run(os.Args)
 	}
-	return wrappedArgs
+
+	sc.run(sc.cmd())
 }
