@@ -4,7 +4,7 @@ sqssh
 Install
 -------
 
-`go get github.com/squarescale/sqssh`
+`go get -u github.com/squarescale/sqssh`
 
 Usage
 -----
@@ -16,7 +16,9 @@ hosts:
   Worker:
     jump: Bastion
   Bastion:
-    user: core
+    user: user
+  somecoolname:
+    name: Bastion
 
 $ sqssh Bastion
 user@ip-10-0-253-97 ~ $ exit
@@ -29,9 +31,23 @@ $ # use any options like you would usually do
 $ sqssh -Nf -L8500:localhost:8500 Worker
 $ curl -i localhost:8500 |head -n1
 HTTP/1.1 200 OK
+
+$ # use ssh config
+$ cat <<EOF >>~/.ssh/config
+Host Worker
+    LocalForward 8500 127.0.0.1:8500
+EOF
+$ sqssh -Nf Worker
+$ curl -i localhost:8500 |head -n1
+HTTP/1.1 200 OK
+
+
+$ # alias names
+$ ssh somecoolname
+user@ip-10-0-253-97 ~ $ exit
 ```
 
-The tool leaves the destination (in the form of `user@host`à as-is in the command line, and will prepend `-o Hostname ec2-whatever` to ssh args'. This means that ssh will read config for the host you specify on the command-line. This allows to configure any named host that can change in your cluster.
+The tool leaves the destination (in the form of `user@host` as-is in the command line, and will prepend `-o Hostname ec2-whatever` to ssh arguments. This means that ssh will read config for the host you specify on the command-line. This allows to configure any named host that can change in your cluster.
 
 You can for example have in your ssh_config:
 
