@@ -13,6 +13,7 @@ require (
 	github.com/manifoldco/promptui v0.3.2
 	github.com/sirupsen/logrus v1.2.0
 	github.com/spf13/viper v1.2.1
+	golang.org/x/crypto v0.0.0-20180904163835-0709b304e793
 	golang.org/x/net v0.0.0-20181201002055-351d144fa1fc // indirect
 	k8s.io/kops v1.10.0 // indirect
 )

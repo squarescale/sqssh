@@ -125,6 +125,8 @@ func ec2InstancesRequest(ec2svc *ec2.EC2, name string) (*ec2.DescribeInstancesOu
 
 func chooseInstanceInteractively(resp *ec2.DescribeInstancesOutput) string {
 	hosts := []string{}
+	instances := []*ec2.Instance{}
+
 	hostname := ""
 	for idx, _ := range resp.Reservations {
 		for _, inst := range resp.Reservations[idx].Instances {
@@ -133,27 +135,45 @@ func chooseInstanceInteractively(resp *ec2.DescribeInstancesOutput) string {
 				hostname = *inst.PrivateDnsName
 			}
 			hosts = append(hosts, hostname)
-
+			instances = append(instances, inst)
 			log.Debugf("dns: %#v", hostname)
 		}
 	}
 
 	if len(hosts) > 1 && terminal.IsTerminal(syscall.Stdin) {
-		prompt := promptui.Select{
-			Label: "Which instance",
-			Items: hosts,
+
+		templates := &promptui.SelectTemplates{
+			Label:    "{{ . }}?",
+			Active:   "⇒\t{{ .InstanceId }}",
+			Inactive: "\t{{ .InstanceId }}",
+			Selected: "⇒\t{{ .InstanceId }}",
+			Details: `
+--------- Instance Detail ----------
+Public DNS   : {{ .PublicDnsName }}
+Private DNS  : {{ .PrivateDnsName }}
+Image        : {{ .ImageId }}
+Ssh Key name : {{ .KeyName }}
+Type         : {{ .InstanceType }}
+PlaceMent    : {{ .Placement.AvailabilityZone }}
+`,
 		}
-		_, result, err := prompt.Run()
+		prompt := promptui.Select{
+			Label:     "Which instance",
+			Items:     instances,
+			Templates: templates,
+		}
+		i, _, err := prompt.Run()
 		if err != nil {
 			fmt.Printf("Prompt failed %v\n", err)
 		} else {
-			hostname = result
+			hostname = hosts[i]
 		}
 	}
 	if len(hosts) == 1 {
 		hostname = hosts[0]
 	}
 
+	log.Debug(hostname)
 	return hostname
 }
 
