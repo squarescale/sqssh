@@ -73,10 +73,12 @@ func TestHostnameFromCommand(t *testing.T) {
 
 }
 
+/*
 func TestHostnameFromAws(t *testing.T) {
 	hostname := hostnameFromEc2("bastion")
 	t.Log(hostname)
 }
+*/
 
 // func (s *SshCommand) hostnameFromAws(hostname string) string
 // func (s *SshCommand) hostnameFromConfig(host string) string
