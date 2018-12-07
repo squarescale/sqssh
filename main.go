@@ -3,12 +3,15 @@ package main
 import (
 	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awsutil"
+	//"github.com/aws/aws-sdk-go/aws/awsutil"
+	"errors"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/docopt/docopt-go"
+	"github.com/manifoldco/promptui"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	"golang.org/x/crypto/ssh/terminal"
 	"os"
 	"strings"
 	"syscall"
@@ -51,7 +54,7 @@ type SshCommand struct {
 	Opts docopt.Opts
 }
 
-func NewSshComand(args []string) (*SshCommand, error) {
+func NewSshCommand(args []string) (*SshCommand, error) {
 	sc := new(SshCommand)
 	sc.Args = args
 
@@ -62,6 +65,7 @@ func NewSshComand(args []string) (*SshCommand, error) {
 
 	opts, err := parser.ParseArgs(ssh_usage, sc.Args[1:], "")
 	sc.Opts = opts
+	log.Debugf("opts: %+v", sc.Opts)
 	return sc, err
 }
 
@@ -72,7 +76,7 @@ func (s *SshCommand) hostnameFromCommand(destination string) string {
 	return destination
 }
 
-func (s *SshCommand) hostnameFromAws(hostname string) string {
+func ec2Init() (*ec2.EC2, error) {
 	sess, err := session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
 	})
@@ -83,12 +87,15 @@ func (s *SshCommand) hostnameFromAws(hostname string) string {
 
 	_, err = sess.Config.Credentials.Get()
 	if err != nil {
-		log.Debug("no AWS credential provided, see: https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/setup-credentials.html")
-		return ""
+		return nil, errors.New("no AWS credential provided, see: https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/setup-credentials.html")
 	}
 
 	ec2svc := ec2.New(sess)
 	//ec2svc := ec2.New(sess, aws.NewConfig().WithLogLevel(aws.LogDebugWithHTTPBody))
+	return ec2svc, nil
+}
+
+func ec2InstancesRequest(ec2svc *ec2.EC2, name string) (*ec2.DescribeInstancesOutput, error) {
 	filters := []*ec2.Filter{
 		// builtin filter, the purpose is connecting to hosts, they need to be running
 		&ec2.Filter{
@@ -99,7 +106,7 @@ func (s *SshCommand) hostnameFromAws(hostname string) string {
 
 	f := &ec2.Filter{
 		Name:   aws.String("tag:Name"),
-		Values: []*string{aws.String(hostname)},
+		Values: []*string{aws.String(name)},
 	}
 	filters = append(filters, f)
 
@@ -107,33 +114,53 @@ func (s *SshCommand) hostnameFromAws(hostname string) string {
 		Filters: filters,
 	}
 
-	log.Debugf("params: %#v", params)
-
 	resp, err := ec2svc.DescribeInstances(params)
 	if err != nil {
 		fmt.Println("there was an error listing instances in", err.Error())
-		log.Fatal(err.Error())
+		return nil, err
 	}
+	return resp, err
 
-	log.Debugf("%#v", resp)
+}
 
-	hosts, _ := awsutil.ValuesAtPath(resp, "Reservations[].Instances[].PrivateDnsName")
-	for _, i := range hosts {
-		log.Debugf("%#v", *i.(*string))
-	}
-	log.Debugf("%v", hosts)
-
+func chooseInstanceInteractively(resp *ec2.DescribeInstancesOutput) string {
+	hosts := []string{}
+	hostname := ""
 	for idx, _ := range resp.Reservations {
 		for _, inst := range resp.Reservations[idx].Instances {
 			hostname = *inst.PublicDnsName
 			if hostname == "" {
 				hostname = *inst.PrivateDnsName
 			}
+			hosts = append(hosts, hostname)
+
 			log.Debugf("dns: %#v", hostname)
-			return hostname
 		}
 	}
-	return ""
+
+	if len(hosts) > 1 && terminal.IsTerminal(syscall.Stdin) {
+		prompt := promptui.Select{
+			Label: "Which instance",
+			Items: hosts,
+		}
+		_, result, err := prompt.Run()
+		if err != nil {
+			fmt.Printf("Prompt failed %v\n", err)
+		} else {
+			hostname = result
+		}
+	}
+	if len(hosts) == 1 {
+		hostname = hosts[0]
+	}
+
+	return hostname
+}
+
+func hostnameFromEc2(hostname string) string {
+	ec2svc, _ := ec2Init()
+	instances, _ := ec2InstancesRequest(ec2svc, hostname)
+	return chooseInstanceInteractively(instances)
 }
 
 func (s *SshCommand) hostnameFromConfig(host string) string {
@@ -147,7 +174,7 @@ func (s *SshCommand) hostnameFromConfig(host string) string {
 func (s *SshCommand) hostArg() string {
 	h := s.hostnameFromCommand(s.Opts["DESTINATION"].(string))
 	h = s.hostnameFromConfig(h)
-	h = s.hostnameFromAws(h)
+	h = hostnameFromEc2(h)
 	if h != "" {
 		return "-o Hostname " + h
 	}
@@ -160,7 +187,7 @@ func (s *SshCommand) jumpArg() string {
 	if j != "" {
 		j := s.hostnameFromConfig(j)
 		u := viper.GetString("hosts." + j + ".user")
-		j = s.hostnameFromAws(j)
+		j = hostnameFromEc2(j)
 		if u != "" {
 			u = u + "@"
 		}
@@ -206,7 +233,7 @@ func main() {
 		log.Debug(err)
 	}
 
-	sc, err := NewSshComand(os.Args)
+	sc, err := NewSshCommand(os.Args)
 	if err != nil {
 		log.Debug("couldn't parse ssh command, executing as-is")
 		sc.run(os.Args)
